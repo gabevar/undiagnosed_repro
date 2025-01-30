@@ -1,0 +1,73 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Create communication network variables
+
+Bring in the data and split it into chunks otherwise it might be tough to process on a regular laptop
+
+```{r}
+library(haven)
+library(tidyverse)
+library(usethis) 
+library(here)
+```
+
+```{r}
+df <- read_csv("/Users/gabe/Documents/Projects/NetHealth/data/CommEvents(2-28-20).csv")
+
+df_chunks <- split(df, rep(1:3, length.out = nrow(df), each = ceiling(nrow(df)/3))) # Split dataset into 3 otherwise it won't run
+```
+
+Filter out unwanted communications
+
+```{r}
+comm_df <- tibble()
+for (n in 1:length(df_chunks)) {
+  
+  chunk <- df_chunks[[n]]
+  
+  chunk <- chunk %>% 
+  mutate(ego_survey = case_when(egoid %in% df_survey$egoid ~ 1, TRUE ~ 0),
+         alter_survey = case_when(alterid %in% df_survey$egoid ~ 1, TRUE ~ 0)) %>% 
+  filter(ego_survey == 1 & alter_survey == 1) # keep only alters in survey
+  
+  chunk <- chunk %>% 
+    rename_with(tolower) %>% 
+    filter(eventtype != "WhatsApp" & eventtypedetail != "GC") %>%  # remove whatsapp group chats.
+    filter(alterconf >= 0.6) %>% # remove non-confident alters.
+    # filter(outgoing == "Yes") %>% # Only keep outgoing messages.
+    filter(is.na(duration) | duration > 0) %>% # remove calls of duration 0.
+    filter(is.na(bytes) | bytes > 0) %>% # remove messages of size 0.
+    filter(is.na(length) | length > 0)  # remove messages of length 0.
+  
+  comm_df <- bind_rows(comm_df, chunk)
+}
+```
+
+Match and aggregate events into waves
+
+```{r}
+comm_df_sum <- comm_df %>% 
+  mutate(wave = case_when(studyweek >= 0 & studyweek < 19 ~ 1,
+                          studyweek >= 19 & studyweek < 38 ~ 2,
+                          studyweek >= 38 & studyweek < 53 ~ 3,
+                          studyweek >= 53 & studyweek < 71 ~ 4,
+                          studyweek >= 71 & studyweek < 90 ~ 5,
+                          studyweek >= 105 & studyweek < 126 ~ 6,
+                          studyweek >= 126 & studyweek < 142 ~ 7)) %>% 
+  group_by(egoid, alterid, wave) %>% 
+  summarise(weight = n())
+
+comm_df_sum <- comm_df_sum %>% 
+  filter(!is.na(wave)) %>% 
+  filter(egoid != alterid)
+```
+
+Save edgelist
+
+```{r}
+saveRDS(comm_df_sum, here("data", "event_edgelist_sum.rds"))
+```
+

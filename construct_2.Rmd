@@ -1,0 +1,370 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+In this second script, we are taking the variables created in script 1 and the network of communication to construct the number of contacts that individual's are connected to at each level.
+
+# Setup
+
+Import base packages
+
+```{r, warning = F, message = F}
+library(tidyverse)
+library(igraph)
+library(haven)
+library(here)
+```
+
+Read in raw data: basic survey, network survey, club data.
+
+```{r warning = F, message = F}
+# Bring in custom helping functions
+source(here("code/sf_repro", "helpr_funct.R"))
+
+# Basic survey across all 8 waves
+df <- read_dta(here("data","BasicSurvey(3-6-20).dta")) %>%  
+  rename_all(tolower) %>%  
+  filter(studystatus == 1) 
+
+df <- sjlabelled::remove_all_labels(df)
+
+# Bring in nomination data
+net_df <- read_csv(here("data","NetWorkSurvey(2-28-20).csv")) %>%
+  filter(ambigrec == F) %>% # filter out high prob of wrong link
+  mutate(ego_survey = case_when(egoid %in% df$egoid ~ 1, TRUE ~ 0),
+         alter_survey = case_when(alterid %in% df$egoid ~ 1, TRUE ~ 0))
+
+# Bring in club data, fixed manually
+clubs_fixed <- read_csv(here("data", "clubs_filtered.csv"))
+clubs_fixed <- clubs_fixed %>% mutate(club = case_when(club == 12900 ~ 12800,  # Fixing egoid/club duplication issue
+                                                       club == 54200 ~ 54000, T ~ club))
+
+# Bring in fixed up survey data
+wide_df <- readRDS("/Users/gabe/Documents/Projects/NetHealth/code/sf_repro/wide_df.rds")
+long_var_df <- readRDS("/Users/gabe/Documents/Projects/NetHealth/code/sf_repro/long_var_df.rds")
+
+# Bring in communication network data
+comm_event <- readRDS("/Users/gabe/Documents/Projects/NetHealth/code/event_edgelist_sum.rds")
+
+df_fixed <- df
+```
+
+## Communication network
+
+Using the communication events edgelist, I construct a communication network at each wave. 
+I identify individual's positions and determine how many contacts they have who self-label at each wave.
+
+I do this at different weight cutoffs; These will be useful for the appendix to test the importance of moving thresholds.
+
+```{r, warning = F}
+# take above average of logged weight
+comm_event1 <- comm_event %>% ungroup() %>%  
+  mutate(weight_log = log(weight),
+         weight_scale = scale(log(weight))) %>% 
+  filter(weight_scale >= 0) %>%  # take above average log weighted communications
+  mutate(wave = case_when(wave == 1 | wave == 2 ~ 0, T ~ wave)) %>% # Turn wave 1 and 2 to wave 0
+  group_by(egoid, alterid, wave) %>% 
+  summarise(weight = sum(weight, na.rm = T), 
+            weight_log = sum(weight_log, na.rm = T),
+            weight_scale = sum(weight_scale, na.rm = T)) %>% 
+  arrange(egoid, alterid, wave) %>% ungroup()
+
+res_df <- comm_event_fn(comm = comm_event1, comm_type = "mid_") # you can find this function in helpr_funct.R
+wide_df <- wide_df %>% left_join(res_df, by = c("egoid" = "from"))
+
+# do it again, but don't limit the number of communication events
+comm_event2 <- comm_event %>% ungroup() %>% 
+  mutate(weight_log = log(weight),
+         weight_scale = scale(log(weight))) %>% 
+  mutate(wave = case_when(wave == 1 | wave == 2 ~ 0, T ~ wave)) %>% 
+  group_by(egoid, alterid, wave) %>% 
+  summarise(weight = sum(weight, na.rm = T), 
+            weight_log = sum(weight_log, na.rm = T),
+            weight_scale = sum(weight_scale, na.rm = T)) %>% 
+  arrange(egoid, alterid, wave) %>% ungroup()
+
+res_df <- comm_event_fn(comm = comm_event2) # function + binding
+wide_df <- wide_df %>% left_join(res_df, by = c("egoid" = "from"))
+
+# above minus 1 standard deviation
+comm_event3 <- comm_event %>% ungroup() %>% 
+  mutate(weight_log = log(weight),
+         weight_scale = scale(log(weight))) %>% 
+  filter(weight_scale >= -1) %>%
+  mutate(wave = case_when(wave == 1 | wave == 2 ~ 0, T ~ wave)) %>% 
+  group_by(egoid, alterid, wave) %>% 
+  summarise(weight = sum(weight, na.rm = T), 
+            weight_log = sum(weight_log, na.rm = T),
+            weight_scale = sum(weight_scale, na.rm = T)) %>% 
+  arrange(egoid, alterid, wave) %>% ungroup()
+
+res_df <- comm_event_fn(comm = comm_event3, comm_type = "low_") # function + binding
+wide_df <- wide_df %>% left_join(res_df, by = c("egoid" = "from"))
+
+# above plus 1 standard deviation
+comm_event4 <- comm_event %>% ungroup() %>% 
+  mutate(weight_log = log(weight),
+         weight_scale = scale(log(weight))) %>% 
+  filter(weight_scale >= 1) %>%
+  mutate(wave = case_when(wave == 1 | wave == 2 ~ 0, T ~ wave)) %>% 
+  group_by(egoid, alterid, wave) %>% 
+  summarise(weight = sum(weight, na.rm = T), 
+            weight_log = sum(weight_log, na.rm = T),
+            weight_scale = sum(weight_scale, na.rm = T)) %>% 
+  arrange(egoid, alterid, wave) %>% ungroup()
+
+res_df <- comm_event_fn(comm = comm_event4, comm_type = "high_") # function + binding
+wide_df <- wide_df %>% left_join(res_df, by = c("egoid" = "from"))
+```
+
+# Bipartite networks
+
+In this section, I construct co-membership bipartite networks for each waves. Then, I determine how many co-members are self-labeling.
+
+## Clubs and activities
+
+For clubs and activities, there is a bit of manual work involved in removing those categories that are unlikely to produce contact. This means they are either too vague (e.g., Internships & Externships) or not likely to produce contact between students (e.g., Off-campus Employment).
+
+```{r, message = F}
+rmv_clubs <- c("Internships & Externships", "Ambiguous & Other Fitness Activities", "Outdoor Recreation","Fundraising & Philanthropic Activities",
+               "Cross-categorically Ambiguous Responses", "Ambiguous & Other Employment", "Off-campus Employment", "Cryptic & Unrecognizable Responses", 
+               "Professional Networking Events, Ambiguous & Other Professional Networking", "Creative Writing", 
+               "Individual & Unspecified Aerobic Exercise", "Individual & Unspecified Anaerobic & Mixed Exercise", "Indoor Recreation", 
+               "Work with Unclear Compensation", "Cultural Awareness & Heritage Celebration", "Generalized Outdoor Activities", 
+               "Mixed & Unspecified Festivities", "Public Demonstration Participation", "Ambiguous & Other Active Arts Consumption", 
+               "Ambiguous & Other Generalized Physical Activities", "Ambiguous & Other Religious & Spiritual Activities", 
+               "Ambiguous & Other Social & Political Action", "Ambiguous Service, Casual Enrichment Activities", "Community Service", 
+               "Creative Design", "Food & Beverage Enjoyment", "Table Games & Puzzles", "Traveling & Sightseeing", 
+               "Ambiguous & Other Community Service & Philanthropy", "Workshops, Boot Camps, & Training Seminars", "Casual Social Gatherings",
+               "Professional Networking Events", "Pick-up Sports", "Ambiguous & Other Professional Networking", "Generalized Martial Arts", 
+               "Ambiguous Service", "Casual Enrichment Activities", "Generalized Athletics", "Pick-up Sports", 
+               "Ambiguous & Other Experiential Training", "Unspecified Fitness Instruction") 
+
+# Create person by wave by club dataset
+bi_df <- df %>% 
+  select(egoid, matches("^club[0-9]")) %>% 
+  pivot_longer(-egoid) %>% 
+  separate(name, c("name", "wave")) %>%
+  mutate(value = case_when(value == 12900 ~ 12800, T ~ value)) %>% # The club code switch
+  rename(club = value) %>% 
+  left_join(clubs_fixed, by = "club") %>% 
+  mutate(club = case_when(subcategory %in% rmv_clubs ~ NA_real_, T ~ club))  # set removed clubs to NA
+
+waves <- bi_df %>% distinct(wave) %>% filter(wave != 0 & wave != 1 & wave != 8) %>% pull() 
+
+# Do calculation over each wave
+net_list_clubs <- list()
+res_list <- list()
+for (i in 1:length(waves)) {
+  net_res <- bi_calc(wave_select = waves[[i]], input_df = bi_df, text_input = "club")
+  net_list_clubs[[i]] <- net_res[[1]]
+  res_list[[i]] <- net_res[[2]]
+}
+
+transformed <- lapply(seq_along(net_list_clubs), function(x) bi_transform(x, net_list_clubs))
+res_df <- bind_rows(transformed) %>% 
+  mutate(variable = paste(variable, wave, sep="_"),
+         variable = str_remove(variable, "_NA")) %>%
+  select(-wave) %>%
+  pivot_wider(names_from = "variable", values_from = "value")
+
+wide_df <- wide_df %>% left_join(res_df, by = "egoid")
+```
+
+## Courses
+
+Instead of clubs, look for students who shared a same classroom. Apply the same process as above however:
+
+Course Record Numbers (CRNs) have been anonymized. The same CRN in the same semester indicates the same course. CRN numbers are formated as YYSSAANNNN, where YY is academic year from 20YY-20(YY+1), and SS is either 01 for Fall, 02 for Spring and 03 for summer. So 1502AANNN is Spring semester of academic year from 2015-2016 which is really Spring of 2016, and 1503AANN is Summer semester of AY 2015-2016, i.e Summer 2016. AA is a 2-digit code for the department or area the course is in, again anonymized but so that two CRNs with the same AA are courses in the same area. NNNN is the anonymized CRN number for a course in a specific area in a specific semester.
+
+Issue here is that the courses are via semester (fall, spring and summer) rather than by wave. I set the first two semester's as a first year, *and ignore summer courses apart from the first which don't fall neatly on waves*. Also, the final wave encompasses two semesters.
+
+- Fall 2015 == Wave 0 (year 1)
+- Spring 2016 == Wave 0 (year 1)
+- Summer 2016 == Wave 3 (summer 2016)
+- Fall 2016 == Wave 4 (fall 2016)
+- Spring 2017 == Wave 5 (spring 2017)
+- Fall 2017 == Wave 6 (fall 2017)
+- Spring 2018 == Wave 7 (spring 2018)
+- Fall 2018 == Wave 8 (year 4)
+- Spring 2019 == Wave 8 (year 4)
+
+```{r, message = F}
+bi_df <- df %>% 
+  select(egoid, matches("crn")) %>% 
+  pivot_longer(-egoid) %>% 
+  separate(name, c("name", "semester")) %>% 
+  mutate(wave = case_when(semester == "fa2015" ~ 0, semester == "sp2016" ~ 0,
+                          semester == "su2016" ~ 3, semester == "fa2016" ~ 4,
+                          semester == "sp2017" ~ 5, semester == "su2017" ~ NA_real_,
+                          semester == "fa2017" ~ 6, semester == "sp2018" ~ 7,
+                          semester == "su2018" ~ NA_real_, semester == "fa2018" ~ 8,
+                          semester == "sp2019" ~ 8)) %>% 
+  rename(course = value) %>% select(-semester) %>% 
+  filter(!is.na(wave))
+
+waves <- bi_df %>% distinct(wave) %>% filter(wave != 8) %>% pull() 
+
+net_list_course <- list()
+res_list <- list()
+for (i in 1:length(waves)) {
+  net_res <- bi_calc(wave = waves[[i]], input_df = bi_df, text_input = "course")
+  net_list_course[[i]] <- net_res[[1]]
+  res_list[[i]] <- net_res[[2]]
+}
+
+transformed <- lapply(seq_along(net_list_course), function(x) bi_transform(x, net_list_course))
+res_df <- bind_rows(transformed) %>% 
+  mutate(variable = paste(variable, wave, sep="_"),
+         variable = str_remove(variable, "_NA")) %>%
+  select(-wave) %>%
+  pivot_wider(names_from = "variable", values_from = "value")
+
+wide_df <- wide_df %>% left_join(res_df, by = "egoid")
+```
+
+## Residence
+
+Finally, look for students who share the same residence hall. In this case, there is only one value for each year. 
+First, I turn the year variables into their semester analogues, ignoring summers. Then, I assign to the appropriate waves.
+
+- Year 1 = Waves 0, 1, 2, 3
+- Year 2 = Waves 4, 5
+- Year 3 = Waves 6, 7
+- Year 4 = Waves 8
+
+```{r, message = F}
+bi_df <- df %>% 
+  select(egoid, matches("reshall")) %>% 
+  rename(reshall_fa2015 = reshallyear1, reshall_fa2016 = reshallyear2,
+         reshall_fa2017 = reshallyear3,reshall_fa2018 = reshallyear4) %>% 
+  mutate(reshall_sp2016 =reshall_fa2015, reshall_sp2017 = reshall_fa2016,
+         reshall_sp2018 = reshall_fa2017, reshall_sp2019 = reshall_fa2018) %>% 
+  pivot_longer(-egoid) %>% 
+  separate(name, c("name", "semester")) %>%
+  mutate(wave = case_when(semester == "fa2015" ~ 0, semester == "sp2016" ~ 0, 
+                          semester == "fa2016" ~ 4, semester == "sp2017" ~ 5,
+                          semester == "fa2017" ~ 6, semester == "sp2018" ~ 7, 
+                          semester == "fa2018" ~ 8, semester == "sp2019" ~ 8)) %>% 
+  rename(residence = value) %>% select(-semester)
+
+waves <- bi_df %>% distinct(wave) %>% filter(wave != 8) %>% arrange(wave) %>% pull() 
+
+net_list_res <- list()
+res_list <- list()
+for (i in 1:length(waves)) {
+  net_res <- bi_calc(wave = waves[[i]], input_df = bi_df, text_input = "residence")
+  net_list_res[[i]] <- net_res[[1]]
+  res_list[[i]] <- net_res[[2]]
+}
+
+transformed <- lapply(seq_along(net_list_res), function(x) bi_transform(x, net_list_res))
+res_df <- bind_rows(transformed) %>% 
+  mutate(variable = paste(variable, wave, sep="_"),
+         variable = str_remove(variable, "_NA")) %>%
+  select(-wave) %>%
+  pivot_wider(names_from = "variable", values_from = "value")
+
+wide_df <- wide_df %>% left_join(res_df, by = "egoid")
+```
+
+For residence, I want to assign the values attributes to waves 1 - 3 to the first year as a whole (dubbed wave 0)
+
+For clubs, it works the same wave but for wave 1 - 2
+
+```{r}
+wide_df <- wide_df %>% 
+  mutate(across(.cols = matches("residence(.imp)?_0"), .names = '{str_replace(.col, "0", "3")}')) %>% 
+  mutate(across(.cols = matches("club(.imp)?_2"), .names = '{str_replace(.col, "2", "0")}'))
+```
+
+## Merge co-memberships
+
+Instead of considering each co-membership network seperately, I merge the values for each into a single measurement of co-membership. Note that this loop account for any number of alter variable summarization, although we are only focusing on 1 here.
+
+```{r}
+waves <- c(0, 3, 4, 5, 6, 7)
+for (i in waves) {
+  
+  print(paste0("Merging wave ", i))
+  
+  club_measures <- wide_df %>% select(egoid, (contains("_club")) & contains(as.character(i)))
+  course_measures <- wide_df %>% select(egoid, (contains("_course")) & contains(as.character(i)))
+  res_measures <- wide_df %>% select(egoid, (contains("_residence")) & contains(as.character(i)))
+  
+  measures <- plyr::join_all(list(course_measures, res_measures, club_measures), by = "egoid", type = "left")
+    
+  var1 <- measures %>% select(-egoid) %>% names() %>% 
+    str_extract("[a-z|0-9]*_") %>% str_remove("_") %>% unique()
+  var2 <- paste0(var1, "_weighted")
+  vars <- c(var1, var2)
+  
+  # Create total accross foci for each weighted and non-weighted variable.
+  varfit_final <- tibble(egoid = measures$egoid)
+  for (v in vars){
+    
+    # print(v)
+    skip_to_next <- FALSE
+    
+    varfit <- measures %>% 
+      mutate("focitotal_{{v}}_{{i}}" := !!as.name(paste0(v, "_course_", i)) + 
+             !!as.name(paste0(v, "_residence_", i)) + 
+             !!as.name(paste0(v, "_club_", i))) %>% select(egoid, tail(names(.), 1))
+    
+     tryCatch(varfit1 <- measures %>% 
+                mutate("focitotal_{{v}}.imp_{{i}}" := !!as.name(paste0(v, "_course.imp_", i)) + 
+               !!as.name(paste0(v, "_residence.imp_", i)) + 
+               !!as.name(paste0(v, "_club.imp_", i))) %>% select(egoid, tail(names(.), 1)), 
+              error = function(e) { skip_to_next <<- TRUE})
+    
+      if(skip_to_next) {varfit_final <- varfit_final %>% left_join(varfit, by = "egoid") 
+      } else {varfit_final <- varfit_final %>% left_join(varfit, by = "egoid") %>% left_join(varfit1, by = "egoid")} 
+    
+  }
+  
+  names(varfit_final) <-  gsub('"', "", names(varfit_final))
+  wide_df <- wide_df %>% left_join(varfit_final, by = "egoid")
+
+}
+```
+
+# Nomination network
+
+Next, I create networks of friendship nominations. Note that someone is included if they are part of the main survey and if they receive any nomination at a given wave. Returns values for directed and directed version of the network.
+
+```{r}
+waves <- c("Wave0", "Wave1", "Wave2", "Wave3", "Wave4", "Wave5", "Wave6", "Wave7")
+res <- list()
+for (i in waves) { 
+  temp_res <- build_net_vars(i) # wave_switch to switch wave 2 with 0
+  res[[i]] <- temp_res
+}
+
+# Bind waves and pivot back to wide
+res_df <- bind_rows(res) %>% 
+  mutate(variable = paste(variable, wave, sep = "_"),
+         variable = str_remove(variable, "_NA")) %>%
+  select(-wave) %>%
+  pivot_wider(names_from = "variable", values_from = "value")
+
+# Merge and give people who didn't take network survey a 0 instead of NA
+wide_df <- wide_df %>% left_join(res_df, by = "egoid") %>%
+  mutate_at(vars(in_net_wave_2, in_net_wave_3, in_net_wave_4, 
+                 in_net_wave_5, in_net_wave_6, in_net_wave_7), ~replace_na(., 0))
+```
+
+Save output of network measurements
+
+```{r}
+saveRDS(wide_df, here("data", "wide_var_df.rds"))
+```
+
+
+
+
+
+
+
+
+

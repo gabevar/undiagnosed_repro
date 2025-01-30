@@ -1,0 +1,284 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+In this first script, we are pulling from the raw survey data and constructing the variables needed for further analysis.
+
+# Create basic survey variables
+
+Import base packages
+
+```{r, warning = F, message = F}
+library(tidyverse)
+library(igraph)
+library(haven)
+library(here)
+```
+
+Read in raw data: basic survey, network survey, club data, sleep data.
+
+```{r warning = F, message = F}
+df <- read_dta(here("data","BasicSurvey(3-6-20).dta")) %>%  # Basic survey across all 8 waves
+  dplyr::rename_all(tolower) %>%  
+  filter(studystatus == 1) # Keep only students that made it into the study
+
+df <- sjlabelled::remove_all_labels(df)
+
+df_fixed <- df
+```
+
+First select the variables we are going to be working with.
+
+```{r}
+df_fixed <- df_fixed %>% 
+  select(egoid, tier, us, gender_1, parenteduc_1, citizenship_1, race_1, multiracial_1,
+         matches("enddate_[0-9]"),
+         matches("mentalhealthundiag_[0-9]$"), matches("undiagall_[0-9]$"), matches("mentalhealthundiagrca_[0-9]$"), # Disability
+         matches("mentalhealthundiagrcb_[0-9]$"), matches("mentalhealthissue_[0-9]$"), matches("learningdisability_[0-9]$"),
+         matches("disability_diag_[0-9]$"), matches("disabilityrcb_[0-9]$"), matches("newdisability_[0-9]$"), 
+         matches("disability"), matches("undiagall"),
+         matches("cesdoverall_[0-9]$"), matches("CESDGroup_[0-9]$"), # Symptom severity
+         matches("bdisum_[0-9]$"), matches("bdigroup_[0-9]$"), matches("staitraitgroup_[0-9]$"), 
+         matches("baigroup_[0-9]$"), matches("happy_[0-9]$"),
+         matches("^selsa_fam_[0-9]$"), matches("^selsa_soc_[0-9]$"), # perceptions
+         matches("usedrugs_[0-9]$"), matches("usedrugs_prescr_[0-9]$"), # drug use
+         matches("^polorientation_[0-9]$"), matches("^facebook_[0-9]$"), matches("^instagram_[0-9]$"), # other
+         matches("^twitter_[0-9]$"), matches("^snapchat_[0-9]$"), matches("^major[0-2]"), matches("^club[0-9]?[0-9]rc"))
+
+df_fixed <- df_fixed %>% mutate(major1rc_7 = NA, major2rc_7 = NA)
+```
+
+### Variables indicating self-labeling and formal diagnosis.
+
+During waves 1 through 4, asks about undiagnosed MH issue specifically. For waves 5 - 7, I am including the individual if the team coded at least one self-label as MH.
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(undiag_1 = case_when(mentalhealthundiag_1 == 1 ~ 1, mentalhealthundiag_1 == 0 ~ 0, TRUE ~ NA_real_),
+         undiag_2 = case_when(mentalhealthundiag_2 == 1 ~ 1, mentalhealthundiag_2 == 0 ~ 0, TRUE ~ NA_real_),
+         undiag_3 = case_when(mentalhealthundiag_3 == 1 ~ 1, mentalhealthundiag_3 == 0 ~ 0, TRUE ~ NA_real_),
+         undiag_4 = case_when(mentalhealthundiag_4 == 1 ~ 1, mentalhealthundiag_4 == 0 ~ 0, TRUE ~ NA_real_),
+         undiag_5 = case_when(undiagall_5 == 1 & (undiagall1rcb_5 == 2 |undiagall2rcb_5 == 2|undiagall3rcb_5 == 2) ~ 1, 
+                              T ~ undiagall_5),
+         undiag_6 = case_when(undiagall_6 == 1 & (undiagall1rcb_6 == 2 |undiagall2rcb_6 == 2|undiagall3rcb_6 == 2) ~ 1, 
+                              T ~ undiagall_6),
+         undiag_7 = case_when(undiagall_7 == 1 & (undiagall1rcb_7 == 2 |undiagall2rcb_7 == 2|undiagall3rcb_7 == 2) ~ 1, 
+                              T ~ undiagall_7))
+```
+
+For formal diagnosis, I am consider all learning and non-learning MH diagnosis. For waves 3 - 7, the person needs to specify that it is a MH diagnosis.
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(diag_1 = case_when(mentalhealthissue_1 == 1 | learningdisability_1 == 1 ~ 1,
+                            mentalhealthissue_1 == 0 | learningdisability_1 == 0 ~ 0),
+         diag_2 = case_when(mentalhealthissue_2 == 1 | learningdisability_2 == 1 ~ 1,
+                            mentalhealthissue_2 == 0 | learningdisability_2 == 0 ~ 0),
+         diag_3 = case_when(disability_diag_3 == 1 & disabilityrcb_3 == 2 ~ 1,
+                            disability_diag_3 == 1 & disabilityrcb_3 != 2 ~ 0, 
+                            disability_diag_3 == 0 ~ 0),
+         diag_4 = case_when(newdisability_4 == 1 & (disability1rcb_4 == 2 | disability2rcb_4 == 2 |
+                                                    disability3rcb_4 == 2 | disability4rcb_4 == 2 |
+                                                    disability5rcb_4 == 2) ~ 1,
+                            newdisability_4 == 0 ~ 0,
+                            is.na(newdisability_4) ~ NA_real_, TRUE ~ 0),
+         diag_5 = case_when(newdisability_5 == 1 & (disability1rcb_5 == 2 | disability2rcb_5 == 2 |
+                                                    disability3rcb_5 == 2) ~ 1,
+                            newdisability_5 == 0 ~ 0,
+                            is.na(newdisability_5) ~ NA_real_, TRUE ~ 0),
+         diag_6 = case_when(newdisability_6 == 1 & (disability1rcb_6 == 2 | disability2rcb_6 == 2 |
+                                                    disability3rcb_6 == 2) ~ 1,
+                            newdisability_6 == 0 ~ 0,
+                            is.na(newdisability_6) ~ NA_real_, TRUE ~ 0),
+         diag_7 = case_when(newdisability_7 == 1 & (disability1rcb_7 == 2 | disability2rcb_7 == 2 |
+                                                    disability3rcb_7 == 2) ~ 1,
+                            newdisability_6 == 0 ~ 0,
+                            is.na(newdisability_6) ~ NA_real_, TRUE ~ 0))
+
+# Variable that determines if diagnosis likely took place before college
+df_fixed <- df_fixed %>% mutate(prior_diag = case_when(diag_1 == 1 | diag_2 == 1 ~ 1,
+                                                       diag_1 == 0 | diag_2 == 0 ~ 0,
+                                                       is.na(diag_1) & is.na(diag_1) ~ NA_real_))
+```
+
+Add an alternative kind of diagnosis attribute which assigns a diagnosis every wave after the first report of diagnosis; e.g, if someone reports of diagnosis, it sticks throughout the waves regardless of future reports.
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(diagalt_1 = case_when(diag_1 == 1 ~ 1, T ~ diag_1), diagalt_2 = case_when(diag_1 == 1 | diag_2 == 1 ~ 1, T ~ diag_2),
+         diagalt_3 = case_when(diag_1 == 1  | diag_2 == 1  | diag_3 == 1 ~ 1, T ~ diag_3), 
+         diagalt_4 = case_when(diag_1 == 1  | diag_2 == 1  | diag_3 == 1  | diag_4 == 1 ~ 1, T ~ diag_4),
+         diagalt_5 = case_when(diag_1 == 1  | diag_2 == 1  | diag_3 == 1  | diag_4 == 1  | diag_5 == 1 ~ 1, T ~ diag_5),
+         diagalt_6 = case_when(diag_1 == 1  | diag_2 == 1  | diag_3 == 1  | diag_4 == 1  | diag_5 == 1  | diag_6 == 1 ~ 1, T ~ diag_6),
+         diagalt_7 = case_when(diag_1 == 1  | diag_2 == 1  | diag_3 == 1  | diag_4 == 1  | diag_5 == 1  | diag_6 == 1  | diag_7 == 1 ~ 1, T ~ diag_7))
+```
+
+### Potential severity indicators
+
+Depression: To determine if the person is at risk of depression in any given year, we need to select the appropriate depression measurement used during that wave. For wave 2, use CESD.
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(atrisk_1 = cesdgroup_1,
+         atrisk_2 = cesdgroup_2,
+         atrisk_3 = case_when(bdigroup_3 > 0 ~ 1, bdigroup_3 == 0 ~ 0), 
+         atrisk_4 = cesdgroup_4,
+         atrisk_5 = case_when(bdigroup_5 > 0 ~ 1, bdigroup_5 == 0 ~ 0),
+         atrisk_6 = cesdgroup_6, 
+         atrisk_7 = case_when(bdigroup_7 > 0 ~ 1, bdigroup_7 == 0 ~ 0))
+```
+
+Anxiety: Use to STAIT indicator to determine which student is particularly anxious. STAIT is not asked during waves 3, 4 and 7. During those 
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(atriskanxiety_1 = staitraitgroup_1,
+         atriskanxiety_2 = staitraitgroup_2,
+         atriskanxiety_3 = case_when(baigroup_3 > 0 ~ 1, baigroup_3 == 0 ~ 0), 
+         atriskanxiety_4 = staitraitgroup_4,
+         atriskanxiety_5 = case_when(baigroup_5 > 0 ~ 1, baigroup_5 == 0 ~ 0),
+         atriskanxiety_6 = staitraitgroup_6,
+         atriskanxiety_7 = case_when(baigroup_7 > 0 ~ 1, baigroup_7 == 0 ~ 0))
+```
+
+Happiness: Create a binarized happiness variable. Respondent is unhappy if they respond 1 ("not happy at all") or 2 ("not so happy").
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(happybin_1 = case_when(happy_1 <= 2 ~ 1, happy_1 > 2 ~ 0),
+         happybin_2 = case_when(happy_2 <= 2 ~ 1, happy_2 > 2 ~ 0),
+         happybin_3 = case_when(happy_3 <= 2 ~ 1, happy_3 > 2 ~ 0),
+         happybin_4 = case_when(happy_4 <= 2 ~ 1, happy_4 > 2 ~ 0),
+         happybin_5 = case_when(happy_5 <= 2 ~ 1, happy_5 > 2 ~ 0),
+         happybin_6 = case_when(happy_6 <= 2 ~ 1, happy_6 > 2 ~ 0),
+         happybin_7 = case_when(happy_7 <= 2 ~ 1, happy_7 > 2 ~ 0))
+```
+
+### Political orientation
+
+- Make polorientation at wave 7 the average of the two adjacent waves.
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(across(matches("polorientation_"), ~ case_when(. == 8 ~ 4, T ~ .))) %>% 
+  mutate(polorientation_7 = case_when(!is.na(polorientation_6) & !is.na(polorientation_8) ~ rowMeans(cbind(polorientation_6, polorientation_8)),
+                                      is.na(polorientation_6) & !is.na(polorientation_8) ~ polorientation_8,
+                                      !is.na(polorientation_6) & is.na(polorientation_8) ~ polorientation_6, T ~ NA_real_))
+```
+
+### Drug Use
+
+Most students are not using illegal or prescription drugs. Turn into a binary to indicate who is using some.
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(across(matches("usedrugs_"), ~ case_when(is.na(.) ~ NA_real_, . == 0 ~ 0, T ~ 1)),
+         across(matches("usedrugs_prescr_"), ~ case_when(is.na(.) ~ NA_real_, . == 0 ~ 0, T ~ 1))) %>% 
+  rename(usedrugsprescr_1 = usedrugs_prescr_1, usedrugsprescr_2 = usedrugs_prescr_2,
+         usedrugsprescr_3 = usedrugs_prescr_3, usedrugsprescr_4 = usedrugs_prescr_4,
+         usedrugsprescr_5 = usedrugs_prescr_5, usedrugsprescr_6 = usedrugs_prescr_6,
+         usedrugsprescr_7 = usedrugs_prescr_7, usedrugsprescr_8 = usedrugs_prescr_8)
+```
+
+## Cleanup
+
+Bring in and rename or transform basic information about participants that we want to keep in the next step. 
+Particularly important is *to only keep the [a-z]\_[0-9] scheme for wave-specific variables*
+
+```{r}
+select_vars <- df_fixed %>% 
+  select(egoid, tier, us, gender_1, parenteduc_1, citizenship_1, race_1, multiracial_1, prior_diag,
+         matches("^undiag_|^diag_|^diagalt_"), # Diags
+         matches("atrisk_[0-9]"), matches("atriskanxiety_[0-9]"), matches("happy_[0-9]"), matches("happybin_[0-9]"), # Severity
+         matches("^selsa_fam_[0-9]$"), matches("^selsa_soc_[0-9]$"), # social support
+         matches("usedrugs_[0-9]$"), matches("usedrugsprescr_[0-9]$"), # drug use
+         matches("^polorientation_[0-9]$"), matches("^facebook_[0-9]$"), matches("^instagram_[0-9]$"), # others
+         matches("^twitter_[0-9]$"), matches("^major[0-2]"), matches("^club[0-9]?[0-9]rc")) %>% 
+  names()
+
+df_fixed <- df_fixed %>% 
+  select(any_of(select_vars)) %>% 
+  rename(gender = gender_1, parenteduc = parenteduc_1, citizenship = citizenship_1, 
+         race = race_1, multiracial = multiracial_1)
+```
+
+Because of the messiness of the data for the first year, particularly for individuals brought in in tier 3, its better to consider the Fall and Spring semesters as a single 1st year experience.
+
+For binary variables, I consider that one report counts as a positive for the first year. For continuous, I take the average. For categorical, I take the most recent (usually wave 2).
+
+```{r}
+df_fixed <- df_fixed %>% 
+  mutate(undiag_0 = case_when(undiag_1 == 1 | undiag_2 == 1 ~ 1, undiag_1 == 0 | undiag_2 == 0 ~ 0), # Binary
+         diag_0 = case_when(diag_1 == 1 | diag_2 == 1 ~ 1, diag_1 == 0 | diag_2 == 0 ~ 0),
+         diagalt_0 = case_when(diagalt_1 == 1 | diagalt_2 == 1 ~ 1, diagalt_1 == 0 | diagalt_2 == 0 ~ 0),
+         atrisk_0 = case_when(atrisk_1 == 1 | atrisk_2 == 1 ~ 1, atrisk_1 == 0 | atrisk_2 == 0 ~ 0),
+         atriskanxiety_0 = case_when(atriskanxiety_1 == 1 | atriskanxiety_2 == 1 ~ 1, atriskanxiety_1 == 0 | atriskanxiety_2 == 0 ~ 0),
+         happybin_0 = case_when(happybin_1 == 1 | happybin_2 == 1 ~ 1, happybin_1 == 0 | happybin_2 == 0 ~ 0),
+         facebook_0 = case_when(facebook_1 == 1 | facebook_2 == 1 ~ 1, facebook_1 == 0 | facebook_2 == 0 ~ 0),
+         instagram_0 = case_when(instagram_1 == 1 | instagram_2 == 1 ~ 1, instagram_1 == 0 | instagram_2 == 0 ~ 0),
+         twitter_0 = case_when(twitter_1 == 1 | twitter_2 == 1 ~ 1, twitter_1 == 0 | twitter_2 == 0 ~ 0),
+         usedrugs_0 = case_when(usedrugs_1 == 1 | usedrugs_2 == 1 ~ 1, usedrugs_1 == 0 | usedrugs_2 == 0 ~ 0),
+         usedrugsprescr_0 = case_when(usedrugsprescr_1 == 1 | usedrugsprescr_2 == 1 ~ 1, usedrugsprescr_1 == 0 | usedrugsprescr_2 == 0 ~ 0),
+         selsa_fam_0 = rowMeans(cbind(selsa_fam_1, selsa_fam_2), na.rm=T), # Continuous
+         selsa_soc_0 = rowMeans(cbind(selsa_soc_1, selsa_soc_2), na.rm=T),
+         happy_0 = rowMeans(cbind(happy_1, happy_2), na.rm=T),
+         polorientation_0 = case_when(is.na(polorientation_2) ~ polorientation_1, T ~ polorientation_2)) # Categorical
+```
+
+Use the survey finishing date to figure out if someone well and truly took the survey during a particular wave. 
+For wave 0 aggregation, assume individual is in. If the person is in tier 3, just assume that they are in wave 1 and 2.
+
+```{r}
+in_survey <- df %>% 
+  select(tier, egoid, matches("enddate_[0-9]")) %>% 
+  mutate_all(as.character) %>% 
+  mutate(enddate_0 = "2015-08-05 00:00:00") %>% # add an endate to all for wave 0
+  pivot_longer(c(-egoid, -tier)) %>% 
+  separate(name, c("name", "wave")) %>% 
+  mutate(value = case_when(tier == 3 & (wave == 1 | wave == 2) ~ "1", T ~ value)) %>% # tier 3 individuals
+  select(-tier) %>% group_by(egoid, wave) %>% 
+  mutate(value = as.integer(!any(is.na(value)))) %>% 
+  mutate(variable = "in_survey_wave") %>% 
+  mutate_at(vars(egoid, wave, value), as.numeric) %>% 
+  select(egoid, wave, variable, value)
+```
+
+Flip dataset to long form, add in flag for survey participation and flip back to wide. 
+This adds in missing wave data as NA where it is needed (e.g, the question wasn't asked for a specific wave). 
+While this doesn't add any new information (all variables are NA), it allows me to loop over all waves in the future.
+
+```{r, warning = F}
+long_var_df <- df_fixed %>% 
+  pivot_longer(-c(egoid)) %>% 
+  separate(name, into = c("variable", "wave"), sep = "(?<=[A-Za-z]|[0-9])_(?=[0-9])") %>% 
+  mutate(wave = as.numeric(wave)) %>% arrange(egoid, variable, wave)
+
+long_var_df <- in_survey %>% 
+  bind_rows(long_var_df) %>% 
+  ungroup()
+
+wide_df <- long_var_df %>%
+  mutate(variable = paste(variable, wave, sep="_"),
+         variable = str_remove(variable, "_NA")) %>%
+  select(-wave) %>%
+  pivot_wider(names_from = "variable", values_from = "value")
+```
+
+Save for second construction phase
+
+```{r}
+saveRDS(wide_df, here("data", "wide_df.rds"))
+saveRDS(long_var_df, here("data", "longvar_df.rds"))
+```
+
+
+
+
+
+
+
+
+
+
+

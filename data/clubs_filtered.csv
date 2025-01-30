@@ -1,0 +1,149 @@
+category,subcategory,club
+Varsity Athletics,Men's Varsity Athletics,11100
+Varsity Athletics,Women's Varsity Athletics,11200
+Varsity Athletics,Ambiguous & Other Varsity Athletics,11300
+Non-varsity Organized Athletics,Intramural Athletics,12100
+Non-varsity Organized Athletics,Club Athletics,12200
+Non-varsity Organized Athletics,Individual & Unspecified Competetive Athletics,12300
+Non-varsity Organized Athletics,Ambiguous & Other Non-varsity Organized Athletics,12900
+Unorganized & Unspecified Athletics,Pick-up Sports,13100
+Unorganized & Unspecified Athletics,Generalized Athletics,13200
+Unorganized & Unspecified Athletics,Ambiguous & Other Unorganized Athletics,13900
+Fitness Activities,Organized Aerobic Fitness Instruction,14100
+Fitness Activities,Organized Anaerobic & Mixed Fitness Instruction,14200
+Fitness Activities,Individual & Unspecified Aerobic Exercise,14300
+Fitness Activities,Individual & Unspecified Anaerobic & Mixed Exercise,14400
+Fitness Activities,Unspecified Fitness Instruction,14500
+Fitness Activities,Ambiguous & Other Fitness Activities,14900
+Organized Physical Activities,Outdoor Activity Clubs,15100
+Organized Physical Activities,Martial Arts Associations,15200
+Organized Physical Activities,Ambiguous & Other Organized Physical Activities,15900
+Generalized Physical Activities,Generalized Outdoor Activities,16100
+Generalized Physical Activities,Generalized Martial Arts,16200
+Generalized Physical Activities,Ambiguous & Other Generalized Physical Activities,16900
+Para-athletics,Athletic Cheering,17100
+Para-athletics,Athletic Officiating,17200
+Para-athletics,Athletic Managing & Training,17300
+Para-athletics,Ambiguous & Other Para-athletics,17900
+Other Athletics & Physical Activities,Specialized Athletic Practice,19100
+Other Athletics & Physical Activities,Ambiguous & Other Athletics & Physical Activities,19900
+Other Athletics & Physical Activities,Not Otherwise Specified Athletics & Physical Activities,19999
+Performing Arts,Musical Performance,21100
+Performing Arts,Theatrical Performance,21200
+Performing Arts,Performing Dance,21300
+Performing Arts,Ambiguous & Other Performing Arts,21900
+Visual Arts Creation,Organized Visual Arts Creation,22100
+Visual Arts Creation,Individual or Unspecified Visual Arts Creation,22200
+Visual Arts Creation,Ambiguous & Other Visual Arts Creation,22900
+Composition & Design,Creative Writing,23100
+Composition & Design,Musical Composition,23200
+Composition & Design,Creative Design,23300
+Composition & Design,Ambiguous & Other Composition & Design,23900
+Culinary Arts & Handy Crafting,Handy Crafts,24100
+Culinary Arts & Handy Crafting,Baking and Cooking,24200
+Culinary Arts & Handy Crafting,Ambiguous & Other Arts & Crafts,24900
+Media Creation,Broadcast Media Creation,25100
+Media Creation,Print Media Creation,25200
+Media Creation,Multimedia Creation,25300
+Media Creation,Ambiguous & Other Media Creation,25900
+Active Arts Consumption,Visiting Art Galleries & Museums,26100
+Active Arts Consumption,Attending Live Fine Arts Performances,26200
+Active Arts Consumption,Attending Popular or Unspecified Live Performances,26300
+Active Arts Consumption,Attending Film Festivals & Cinematic Showings,26400
+Active Arts Consumption,Ambiguous & Other Active Arts Consumption,26900
+Other Artistic & Creative Activities,Unspecified Creative Expression,29100
+Other Artistic & Creative Activities,Dedicated Creative Practice,29200
+Other Artistic & Creative Activities,Ambiguous Creative Activities,29300
+Other Artistic & Creative Activities,Not Otherwise Specified Artistic & Creative Activities,29999
+Casual Gaming,Video Games,31100
+Casual Gaming,Table Games & Puzzles,31200
+Casual Gaming,Games of Chance,31300
+Casual Gaming,Ambiguous & Other Gaming,31900
+Recreational Activities,Outdoor Recreation,32100
+Recreational Activities,Indoor Recreation,32200
+Recreational Activities,Ambiguous & Other Recreation,32900
+Spectator Entertainment,Attending Sporting Events,33100
+Spectator Entertainment,Ambiguous & Other Spectator Entertainment,33900
+Media Consumption,Reading Print Media,34100
+Media Consumption,Watching Video Media,34200
+Media Consumption,Listening to Audio Media,34300
+Media Consumption,Social Media Consumption,34400
+Media Consumption,Ambiguous & Other Media Consumption,34900
+"Dining, Shopping, & Travel",Food & Beverage Enjoyment,35100
+"Dining, Shopping, & Travel","Shopping, Adornment, & Beautification",35200
+"Dining, Shopping, & Travel",Traveling & Sightseeing,35300
+"Dining, Shopping, & Travel","Ambiguous & Other Dining, Shopping, & Travel",35900
+Social & Interpersonal Interaction,Casual Social Gatherings,36100
+Social & Interpersonal Interaction,Casual Interpersonal Interaction,36200
+Social & Interpersonal Interaction,"Romantic, Intimate, & Sexual Interaction",36300
+Social & Interpersonal Interaction,Ambiguous & Other Social Engagement,36900
+Other Leisure Activities,Passive Rest & Relaxation,39100
+Other Leisure Activities,Casual Enrichment Activities,39200
+Other Leisure Activities,Other Hobbies & Passtime Activities,39300
+Other Leisure Activities,Not Otherwise Specified Leisure Activities,39999
+Religious Societies,Religious Congregations & Fellowships,41100
+Religious Societies,Lay Ministry & Leadership,41200
+Religious Societies,Religious Education & Training,41300
+Religious Societies,Prayer & Scripture Study Groups,41400
+Religious Societies,Ambiguous & Other Religious Societies,41900
+Cultural & Identity-based Associations,"Ethnic, National, & Religious Heritage Associations",42100
+Cultural & Identity-based Associations,Cultural Awareness & Celebration Clubs,42200
+Cultural & Identity-based Associations,"Identity Pride, Support, & Solidarity Groups",42300
+Cultural & Identity-based Associations,Alumni Organizations,42400
+Cultural & Identity-based Associations,Ambiguous & Other Cultural & Identity-based Associations,42900
+Civic & Community Organizations,Student Government Offices,43100
+Civic & Community Organizations,Neighborhood Associations & Local Interest Groups,43200
+Civic & Community Organizations,Civic Engagement Organizations,43300
+Civic & Community Organizations,Educational & Child-focused Organizations,43400
+Civic & Community Organizations,Values-focused & Personal Improvement Organizations,43500
+Civic & Community Organizations,"Health, Wellness, & Medical Organizations",43600
+Civic & Community Organizations,Public Safety & Criminal Justice Organizations,43700
+Civic & Community Organizations,Poverty & Disaster Relief Organizations,43800
+Civic & Community Organizations,Ambigous & Other Civic & Community Organizations,43900
+Social & Political Action Organizations,"Political Parties, Chapters, and Campaigns",44100
+Social & Political Action Organizations,Social Justice & Advocacy Organizations,44200
+Social & Political Action Organizations,Environmental & Conservationist Organizations,44300
+Social & Political Action Organizations,Ambiguous & Other Political Organizations,44900
+Intellectual & Disciplinary Associations,Academic Interest Clubs,45100
+Intellectual & Disciplinary Associations,"Study, Edification, & Working Groups",45200
+Intellectual & Disciplinary Associations,Ambiguous & Other Intellectual & Disciplinary Associations,45900
+Hobby & Personal Interest Associations,Recreational Clubs,46100
+Hobby & Personal Interest Associations,Artistic Cooperatives & Arts Appreciation Organizations,46200
+Hobby & Personal Interest Associations,Interest-based & Unspecified Hobby Clubs,46300
+Hobby & Personal Interest Associations,Ambiguous & Other Hobby & Personal Interest Associations,46900
+Other Social Clubs & Special Interest Groups,Unspecified Club Membership,49100
+Other Social Clubs & Special Interest Groups,Ambiguous & Other Residence Hall Associations,49200
+Other Social Clubs & Special Interest Groups,Not Otherwise Specified Social Clubs & Special Interest Groups,49999
+Religious & Spiritual Activities,Religious Services Attendance,51100
+Religious & Spiritual Activities,Spiritual Practices,51200
+Religious & Spiritual Activities,Ambiguous & Other Religious & Spiritual Activities,51900
+Culture & Identity Awareness Activities,Cultural Awareness & Heritage Celebration,52100
+Culture & Identity Awareness Activities,Identity Pride & Solidarity Activities,52200
+Culture & Identity Awareness Activities,Ambiguous & Other Culture & Identity Awareness Activities,52900
+Civic Engagement & Community Service,Civic Engagement Activities,53100
+Civic Engagement & Community Service,Community Service,53200
+Civic Engagement & Community Service,Fundraising & Philanthropic Activities,53300
+Civic Engagement & Community Service,Ambiguous & Other Community Service & Philanthropy,53900
+Social & Political Activism,Public Demonstration Participation,54100
+Social & Political Activism,Generalized Activism & Advocacy,54200
+Social & Political Activism,Ambiguous & Other Social & Political Action,54900
+Other Generalized Community Involvement,Mixed & Unspecified Festivities,59100
+Other Generalized Community Involvement,Ambiguous Service,59200
+Other Generalized Community Involvement,Not Otherwise Specified Generalized Community Involvement,59999
+Regular Employment,On-campus Employment,61100
+Regular Employment,Off-campus Employment,61200
+Regular Employment,Ambiguous & Other Employment,61900
+Experiential Training,Internships & Externships,62100
+Experiential Training,"Workshops, Boot Camps, & Training Seminars",62200
+Experiential Training,Ambiguous & Other Experiential Training,62900
+Professional Networking,Professional Associations,63100
+Professional Networking,Professional Networking Events,63200
+Professional Networking,Ambiguous & Other Professional Networking,63900
+Other Occupational Activities,Domestic Labor,69100
+Other Occupational Activities,Investment Activities,69200
+Other Occupational Activities,Work with Unclear Compensation,69300
+Other Occupational Activities,Not Otherwise Specified Occupational Activities,69999
+Otherwise Unclassifiable,Illegible Responses,91100
+Otherwise Unclassifiable,Cryptic & Unrecognizable Responses,91200
+Otherwise Unclassifiable,Cross-categorically Ambiguous Responses,91300
+Otherwise Unclassifiable,Not Otherwise Specified Uninterpretable Responses,91999

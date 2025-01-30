@@ -1,0 +1,191 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+In this script, we bring in the final datasets and construct exploratory tables, results tables and appendices.
+
+```{r, message = F, warning = F}
+library(tidyverse)
+library(compareGroups)
+library(dotwhisker)
+library(pglm)
+library(lme4)
+library(here)
+library(mice)
+library(stargazer)
+library(ggeffects)
+```
+
+```{r, message = F, warning = F}
+analysis_df_full <- readRDS(here("data", "analysis_df_full.rds"))
+analysis_df <- readRDS(here("data", "analysis_df.rds"))
+imp <- readRDS(here("data", "imp_object.rds"))
+imp_comp <- readRDS(here("data", "imp_df.rds"))
+source(here("code/sf_repro", "helpr_funct.R"))
+```
+
+## Table 1: T-test comparison
+
+```{r warning = F}
+comp_df <- analysis_df %>% 
+  drop_na(num_survey_waves, gender, race_reduced, parenteduc, polorientation, undiag,
+          atrisk, atriskanxiety, happybin, selsa_soc, selsa_fam, 
+          sum_undiag, sum_undiag_logweighted, social_use, undiagpost) %>% 
+  mutate(severe = case_when(atrisk == 1 | atriskanxiety == 1 | happybin == 1 ~ 1, T ~ 0),
+         severe = as.factor(severe)) %>% 
+  select(-c(prior_diag, undiagpost, usedrugs, usedrugsprescr, sum_undiag_weighted)) 
+
+comp <- compareGroups(undiagpost_bin ~ ., data = comp_df %>% select(-c(egoid, happy)))
+tab <- createTable(comp, hide = (gender = "male"))
+export2word(tab, "table1.docx")
+```
+
+## Theory 1: Symptom severity and Perceived Social Support
+
+```{r, warning = F}
+m <- glm(undiagpost_bin ~ severe + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+m1 <- glm(undiagpost_bin ~ scale(selsa_soc) + scale(selsa_fam) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+m2 <- glm(undiagpost_bin ~ severe + scale(selsa_soc) + scale(selsa_fam) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+m3 <- glm(undiagpost_bin ~ severe*scale(selsa_fam) + severe*scale(selsa_soc) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+stargazer(m, m1, m2, m3, type = "text", out = "table2.html")
+
+summary(lm(undiagpost_bin ~ severe*scale(selsa_fam) + severe*scale(selsa_soc) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), data = comp_df))
+```
+
+## Interaction plots
+
+```{r}
+mydf <- ggpredict(m3, terms = c("selsa_fam [-1.5, -1, -0.5, 0, 0.5, 1, 1.5]", "severe"),
+                  condition = c(race_reduced = "white", gender = "female"))
+
+p2 <- mydf %>% plot(colors = "bw", show_ci = F) + 
+  labs(x = "Perceived Family Support (SD)", 
+       y = "Probability", 
+       title = "Predicted probabilities of self-labeling 
+by distress and perceived support from family",
+       shape = "distress")
+
+ggsave("/Users/gabe/Documents/Projects/NetHealth/writing/ssm_submission/fig1.png", width = 10)
+```
+
+## Theory 2: Social influence
+
+```{r, warning = F}
+m <- glm(undiagpost_bin ~ scale(sum_undiag) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+m1 <- glm(undiagpost_bin ~ scale(sum_undiag_logweighted) + undiag + 
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+m2 <- glm(undiagpost_bin ~ scale(sum_undiag) + scale(sum_undiag_logweighted) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+stargazer(m, m1, m2, type = "text", out = "table3.html")
+```
+
+## Theory 3: Combined
+
+```{r}
+m <- glm(undiagpost_bin ~ scale(sum_undiag) + scale(selsa_fam)*severe + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+relabeled_covs <- c(`selsa_fam` = "Perceived family support", `severe1` = "Distress",
+                    `sum_undiag` = "Number of self-labeling contacts",
+                    `undiag1` = "Baseline self-labeling", `polorientation` = "Political orientation",
+                    `social_use` = "Social media use", `gendermale` = "Sex: male",
+                    `race_reducednon-white` = "Race/Ethnicity: Non-white", `race_reducedwhite` = "Race/Ethnicity: White",
+                    `parenteducnocollege` = "Parent education: No college", `num_survey_waves` = "Number of survey waves")
+
+breaks <- list(c("Covariates", "Baseline self-labeling", "Number of survey waves"))
+
+plot <- dwplot(m, effects = "fixed", margins = T) %>% 
+  relabel_predictors(relabeled_covs) +
+  theme_bw() +
+  geom_vline(xintercept = 0, colour = "grey60", linetype = 2) +
+  scale_colour_grey(start = .1, end = .1) +
+  theme(legend.position = "none") + 
+  ggtitle("Predicting Follow-up Self-Labeling") +
+  labs(x = "Average marginal effect")
+  
+plot %>% add_brackets(breaks, fontSize = 1)
+
+summary(m)
+
+ggsave("/Users/gabe/Documents/Projects/NetHealth/writing/ssm_submission/fig2.png")
+stargazer(m, type = "text", out = "appendix4.html")
+```
+
+## Appendix 2: Final models with each individual distress measure
+
+```{r, warning = F}
+m <- glm(undiagpost_bin ~ atrisk*scale(selsa_fam) + scale(sum_undiag) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+m1 <- glm(undiagpost_bin ~ atriskanxiety*scale(selsa_fam) + scale(sum_undiag) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+m2 <- glm(undiagpost_bin ~ happybin*scale(selsa_fam) + scale(sum_undiag) + undiag +
+           scale(polorientation)  + scale(social_use) + gender + 
+           race_reduced + parenteduc + scale(num_survey_waves), 
+         family = "binomial", data = comp_df)
+
+stargazer(m, m1, m2, type = "text", out = "appendix2.html")
+```
+
+## Appendix 3: Missingness at different stages
+
+```{r, warning = F}
+miss_df <- setdiff(analysis_df_full$egoid, analysis_df$egoid)
+miss_df2 <- setdiff(analysis_df_full$egoid, comp_df$egoid)
+
+analysis_df_full <- analysis_df_full %>% mutate(miss1 = case_when(egoid %in% miss_df ~ 0, T ~ 1))
+analysis_df_full <- analysis_df_full %>% mutate(inclean = case_when(egoid %in% miss_df2 ~ 0, T ~ 1))
+
+miss_df_full <- analysis_df_full %>% 
+  select(num_survey_waves, gender, race_reduced, parenteduc, polorientation_0, undiag_0,
+          atrisk_0, atriskanxiety_0, happybin_0, selsa_soc_0, selsa_fam_0, 
+          sum_undiag, sum_undiag_logweighted, miss1, inclean, facebook_0, twitter_0, instagram_0) %>% 
+  mutate(social_use = facebook_0 + twitter_0 + instagram_0,
+         severe = case_when(atrisk_0 == 1 | atriskanxiety_0 == 1 | happybin_0 == 1 ~ 1, T ~ 0),
+         severe = as.factor(severe))
+
+misstest <- compareGroups(miss1 ~ ., miss_df_full)
+misstest1 <- compareGroups(inclean ~ ., miss_df_full)
+
+tab <- createTable(misstest)
+tab1 <- createTable(misstest1)
+
+export2word(tab, file='appendix3a.docx')
+export2word(tab1, file='appendix3b.docx')
+```

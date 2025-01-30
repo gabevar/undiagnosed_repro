@@ -1,0 +1,199 @@
+
+# Setup
+
+```{r, warning = F, message = F}
+library(tidyverse)
+library(panelr)
+library(here)
+library(mice)
+```
+
+```{r, warning = F, message = F}
+df <- readRDS(here("data", "wide_var_df.rds")) %>% 
+  labelled::remove_labels() %>% 
+  mutate(num_survey_waves = rowSums(select(., c(in_survey_wave_0, in_survey_wave_3:in_survey_wave_7)))) # add in number of survey waves
+
+source(here("code/sf_repro", "helpr_funct.R"))
+```
+
+Select variable for analysis and exploration
+
+```{r}
+analysis_df <- df %>% 
+  select("egoid", matches("in_survey_wave_"), matches("in_net_wave_"), # time invariant
+         "num_survey_waves", "gender", "parenteduc", "race", "prior_diag",
+         matches("^atrisk_[0-7]"), # at risk of depression
+         matches("polorientation_[0-7]"), # politics
+         matches("^undiag_[0-7]$"), # ego undiagnosed
+         matches("selsa_fam_[0-7]"), matches("selsa_soc_[0-7]"), # perceived support
+         matches("sum_alter_undiag_[0-7]"), matches("undir_sum_alter_undiag_[0-7]"), # num friends undiag
+         matches("focitotal_undiag_weighted_[0-7]"), # num foci undiag
+         matches("sum_comm_undiag_[0-7]"),  matches("mid_sum_comm_undiag_[0-7]"), # num comm undiag (unweighted)
+         matches("low_sum_comm_undiag_[0-7]"), matches("high_sum_comm_undiag_[0-7]"),
+         matches("sum_comm_undiag_weighted_[0-7]"),  matches("mid_sum_comm_undiag_weighted_[0-7]"), # num comm undiag (simple weight)
+         matches("low_sum_comm_undiag_weighted_[0-7]"), matches("high_sum_comm_undiag_weighted_[0-7]"),
+         matches("sum_comm_undiag_commweighted_[0-7]"),  matches("mid_sum_comm_undiag_commweighted_[0-7]"), # num comm undiag (full weight)
+         matches("low_sum_comm_undiag_commweighted_[0-7]"), matches("high_sum_comm_undiag_commweighted_[0-7]"),
+         matches("facebook_[0-7]"), matches("twitter_[0-7]"), matches("instagram_[0-7]"), # social media
+         matches("num_alter_[0-7]"), matches("num_alter_in_[0-7]"), matches("undir_num_alter_[0-7]"), matches("undir_num_alter_in_[0-7]")) # appendix
+```
+
+Cleanup the data: rename gender and race variables. Only one person responds other, so turn them to NA. Create a reductive category of race that compares whites, non-whites and foreign-born students. Split parent's education in no college or some college.
+
+```{r}
+analysis_df <- analysis_df %>% 
+  ungroup() %>% 
+  mutate(gender = case_when(gender == 1 ~ "male", gender == 2 ~ "female"),
+         race = case_when(race == 1 ~ "foreign", race == 2 ~ "latinex", race == 3 ~ "afam",
+                          race == 4 ~ "asam", race == 5 ~ "white", race == 6 ~ "other"), 
+         race = na_if(race, "other"), # there is only one "other" -- turning it to NA
+         race_reduced = case_when(race == "white" ~ "white", race == "foreign" ~ "foreign", T ~ "non-white"),
+         parenteduc = case_when(parenteduc == 1 ~ "nocollege", parenteduc == 2 ~ "college",
+                                parenteduc == 3 ~ "college"))
+```
+
+Now turn into a real panel dataset. Then, remove unwanted waves (wave 1 and 2, wave 8). Reverse code measures of loneliness to aid interpretability. Finally, remove people-wave rows where the person was not a part of the survey.
+
+```{r}
+analysis_df_panel <- long_panel(analysis_df, prefix = "_", label_location = "end", begin = 0, end = 7) 
+
+analysis_df_clean <- analysis_df_panel %>% 
+  ungroup() %>%
+  filter(wave != 1 & wave != 2) %>% 
+  select(-c(contains("_8"))) %>% # remove unwanted waves
+  mutate(selsa_soc = selsa_soc*-1, selsa_fam = selsa_fam*-1) # reverse code loneliness
+
+analysis_df_clean <- analysis_df_clean %>% filter(in_survey_wave == 1)
+```
+
+Limit the survey to people who are present during wave 0 and at least 1 more wave. Then, create the outcome variable: any self-labeling ("undiag") past wave 0. In addition, create a summary statistic for social media use that is the sum of Facebook, Twitter and Instagram use.
+
+```{r}
+analysis_df_clean <- analysis_df_clean %>% 
+    filter(num_survey_waves > 1) %>% 
+    group_by(egoid) %>% 
+    filter(any(wave == 0))
+  
+# Get counts for undiag values after wave 0
+undiagpost <- analysis_df_clean %>% 
+  filter(wave != 0) %>% 
+  group_by(egoid) %>% 
+  count(undiagpost = undiag)
+
+# Get egoids for people who have only NA's post wave 0
+na_undiagpost <- undiagpost %>% 
+  filter(any(is.na(undiagpost))) %>%
+  count(egoid) %>% 
+  filter(n == 1) %>% pull(egoid)
+
+# Create outcome
+undiagpost <- undiagpost %>% 
+  filter(!(egoid %in% na_undiagpost)) %>%  # removing the NA people
+  filter(undiagpost == 1) %>% 
+  select(-undiagpost) %>% 
+  rename(undiagpost = n)
+
+# Clean up dataset
+analysis_df_clean <- analysis_df_clean %>% 
+  ungroup() %>% 
+  filter(wave == 0 & !(egoid %in% na_undiagpost) & in_net_wave == 1) %>% 
+  select(egoid, num_survey_waves, undiag, atrisk, prior_diag, gender, race_reduced, parenteduc, # individual-level
+         selsa_soc, selsa_fam, # perceived social support
+         focitotal_undiag_weighted, sum_alter_undiag, undir_sum_alter_undiag, # foci and core undiagnosed alters
+         sum_comm_undiag, mid_sum_comm_undiag, # peripheral undiagnosed alters
+         low_sum_comm_undiag, high_sum_comm_undiag,
+         sum_comm_undiag_weighted, mid_sum_comm_undiag_weighted, # peripheral undiagnosed alters (weighted)
+         low_sum_comm_undiag_weighted, high_sum_comm_undiag_weighted,
+         sum_comm_undiag_commweighted, mid_sum_comm_undiag_commweighted, # peripheral undiagnosed alters (full weights)
+         low_sum_comm_undiag_commweighted, high_sum_comm_undiag_commweighted,
+         polorientation, facebook, twitter, instagram, undir_num_alter, undir_num_alter_in,
+         num_alter, num_alter_in) %>% 
+  mutate(social_use = facebook + twitter + instagram) # summary social media stat
+
+# Add outcome back in
+analysis_df_clean <- analysis_df_clean %>% 
+  left_join(undiagpost, by = "egoid") %>% 
+  mutate(undiagpost = case_when(is.na(undiagpost) ~ 0, T ~ undiagpost),
+         undiagpost_bin = case_when(undiagpost > 0 ~ 1, T ~ 0))
+```
+
+Impute missing data from the remaining data. For imputation, we want to make sure that the model is not imputing using the students ID numbers (since they are meaningless). In addition, we want to make sure that the different variations of communication networks are not used to impute each other. Otherwise, we use predictive mean matching.
+
+Run 20 imputation runs.
+
+```{r}
+fact_vars <- c("gender", "parenteduc", "race_reduced", "undiag", "atrisk", "prior_diag")
+
+analysis_df_clean <- analysis_df_clean %>% 
+  mutate(across(where(is.matrix), as.numeric),
+         across(all_of(fact_vars), as.factor)) %>% 
+  select(-c(facebook, instagram, twitter, undiagpost))
+
+ini <- mice(analysis_df_clean, maxit=0, print=F)
+pred <- ini$pred
+pred[c("low_sum_comm_undiag_commweighted"), ] <- 1 # try to predict this
+pred[c("low_sum_comm_undiag_commweighted"), c("low_sum_comm_undiag_commweighted")] <- 0 # not using itself
+pred[ , c("egoid", "mid_sum_comm_undiag_commweighted", "low_sum_comm_undiag_commweighted", "high_sum_comm_undiag_commweighted",
+          "mid_sum_comm_undiag_weighted", "low_sum_comm_undiag_weighted", "high_sum_comm_undiag_weighted",
+          "mid_sum_comm_undiag", "low_sum_comm_undiag", "high_sum_comm_undiag")] <- 0 # don't use these to predict
+
+pred[c("sum_comm_undiag", "mid_sum_comm_undiag", 
+       "low_sum_comm_undiag", "high_sum_comm_undiag",
+       "sum_comm_undiag_weighted", "mid_sum_comm_undiag_weighted", 
+       "low_sum_comm_undiag_weighted", "high_sum_comm_undiag_weighted",
+       "sum_comm_undiag_commweighted", "mid_sum_comm_undiag_commweighted", 
+       "low_sum_comm_undiag_commweighted", "high_sum_comm_undiag_commweighted"),
+     c("sum_comm_undiag", "mid_sum_comm_undiag", 
+       "low_sum_comm_undiag", "high_sum_comm_undiag",
+       "sum_comm_undiag_weighted", "mid_sum_comm_undiag_weighted", 
+       "low_sum_comm_undiag_weighted", "high_sum_comm_undiag_weighted",
+       "sum_comm_undiag_commweighted", "mid_sum_comm_undiag_commweighted", 
+       "low_sum_comm_undiag_commweighted", "high_sum_comm_undiag_commweighted")] <- 0
+
+meth <- ini$meth
+meth["low_sum_comm_undiag_commweighted"] <- "pmm"
+
+imp <- mice(analysis_df_clean, predictorMatrix = pred, method = meth, 
+            seed = 123, m = 20, printFlag = F)
+```
+
+Using the imputation object, create a dataframe that summarizes values using means and modes.
+
+```{r}
+imp_comp <- complete(imp, action = "long") %>% drop_na()
+imp_comp <- imp_comp %>% 
+  group_by(egoid) %>% 
+  summarise(num_survey_waves = mean(num_survey_waves), undiag = mymode(undiag), atrisk = mymode(atrisk), 
+            prior_diag = mymode(prior_diag), gender = mymode(gender), race_reduced = mymode(race_reduced), 
+            parenteduc = mymode(parenteduc), selsa_soc = mean(selsa_soc), selsa_fam = mean(selsa_fam), 
+            sum_comm_undiag = mean(sum_comm_undiag),
+            mid_sum_comm_undiag = mean(mid_sum_comm_undiag),
+            low_sum_comm_undiag = mean(low_sum_comm_undiag),
+            high_sum_comm_undiag = mean(high_sum_comm_undiag),
+            sum_comm_undiag_weighted = mean(sum_comm_undiag_weighted),
+            mid_sum_comm_undiag_weighted = mean(mid_sum_comm_undiag_weighted),
+            low_sum_comm_undiag_weighted = mean(low_sum_comm_undiag_weighted),
+            high_sum_comm_undiag_weighted = mean(high_sum_comm_undiag_weighted),
+            sum_comm_undiag_commweighted = mean(sum_comm_undiag_commweighted),
+            mid_sum_comm_undiag_commweighted = mean(mid_sum_comm_undiag_commweighted),
+            low_sum_comm_undiag_commweighted = mean(low_sum_comm_undiag_commweighted),
+            high_sum_comm_undiag_commweighted = mean(high_sum_comm_undiag_commweighted),
+            sum_alter_undiag = mean(sum_alter_undiag),
+            undir_sum_alter_undiag = mean(undir_sum_alter_undiag),
+            focitotal_undiag_weighted = mean(focitotal_undiag_weighted), 
+            polorientation = mean(polorientation),
+            undir_num_alter = mean(undir_num_alter), undir_num_alter_in = mean(undir_num_alter_in),
+            num_alter = mean(num_alter), num_alter_in = mean(num_alter_in),
+            social_use = mean(social_use), undiagpost_bin = mymode(undiagpost_bin))
+```
+
+Save three objects: the untouched clean dataset, the imputation object and the summary of the imputation object
+
+```{r}
+saveRDS(analysis_df_clean, here("data", "analysis_df_clean.rds"))
+saveRDS(imp, here("data", "imp_object.rds"))
+saveRDS(imp_comp, here("data", "imp_comp.rds"))
+```
+
+
+
